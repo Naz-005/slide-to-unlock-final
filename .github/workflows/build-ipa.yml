@@ -17,13 +17,14 @@ jobs:
           brew update
           brew install xcodegen ninja meson pkg-config autoconf automake libtool
 
-      - name: Setup upstream qemu-ios and work tree
+      - name: Setup upstream repositories and work tree
         run: |
           if [ -f "tools/a5/README.md" ]; then
             echo "=== tools/a5/README.md ==="
             cat tools/a5/README.md
           fi
           mkdir -p upstream
+          git clone https://github.com/samhenrigold/LightTouchMac.git upstream/LightTouchMac
           git clone https://github.com/samhenrigold/qemu-ios.git upstream/qemu-ios
           git -C upstream/qemu-ios checkout b225694505
 
