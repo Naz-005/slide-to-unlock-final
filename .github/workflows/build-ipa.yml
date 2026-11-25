@@ -1,0 +1,74 @@
+name: Build ClassicTouch (Slide to Unlock) IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          brew update
+          brew install xcodegen ninja meson pkg-config autoconf automake libtool
+
+      - name: Setup upstream qemu-ios and work tree
+        run: |
+          if [ -f "tools/a5/README.md" ]; then
+            echo "=== tools/a5/README.md ==="
+            cat tools/a5/README.md
+          fi
+          mkdir -p upstream
+          git clone https://github.com/samhenrigold/qemu-ios.git upstream/qemu-ios
+          git -C upstream/qemu-ios checkout b225694505
+
+      - name: Fetch dependency sources
+        run: |
+          chmod +x scripts/ios/*.sh
+          ./scripts/ios/fetch-sources.sh
+
+      - name: Build dependencies and QEMU (JIT + Interp)
+        run: |
+          ./scripts/ios/build-deps.sh iphoneos
+          TCG=jit ./scripts/ios/build-qemu.sh iphoneos
+          ./scripts/ios/make-dylib.sh iphoneos
+          TCG=interp ./scripts/ios/build-qemu.sh iphoneos
+          ./scripts/ios/make-dylib.sh iphoneos
+
+      - name: Generate Xcode project and build iOS app
+        run: |
+          cd app
+          xcodegen generate
+          xcodebuild \
+            -project ClassicTouch.xcodeproj \
+            -scheme ClassicTouch \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "ClassicTouch.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d | head -n 1)
+          fi
+          echo "Found app bundle: $APP_PATH"
+          test -n "$APP_PATH"
+          cp -R "$APP_PATH" Payload/
+          zip -r ClassicTouch-unsigned.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClassicTouch-IPA
+          path: ClassicTouch-unsigned.ipa
